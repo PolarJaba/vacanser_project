@@ -1,0 +1,11 @@
+{
+  "psql_connect": {
+    "conn_id": "psql_connect",
+    "conn_type": "Postgres",
+    "host": "prom-postgresql_db",
+    "database": "vacancy",
+    "user": "admin",
+    "password": "password",
+    "port": 5432
+  }
+}
