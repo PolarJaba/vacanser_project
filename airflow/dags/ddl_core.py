@@ -194,8 +194,8 @@ class DatabaseManager:
             logging.error(f'Vacancies table creating in {self.schema} failed with error: {e}')
             self.conn.rollback()
 
-    def create_not_actual_vacancies_table(self):
-        create_not_actual_vacancy_table_query = f""" 
+    def create_archive_vacancies_table(self):
+        create_archive_vacancy_table_query = f""" 
         CREATE TABLE IF NOT EXISTS {0}.archive_vacancies(
         id BIGSERIAL PRIMARY KEY,
         "version" INT NOT NULL,
@@ -215,14 +215,14 @@ class DatabaseManager:
         );
         """
         try:
-            self.cur.execute(create_not_actual_vacancy_table_query.format(self.schema))
+            self.cur.execute(create_archive_vacancy_table_query.format(self.schema))
             self.conn.commit()
             logging.info(f'Archive vacancies table created successfully in {self.schema}')
         except Exception as e:
             logging.error(f'Archive vacancies table creating in {self.schema} failed with error: {e}')
             self.conn.rollback()
         try:
-            self.cur.execute(create_not_actual_vacancy_table_query.format(self.front_schema))
+            self.cur.execute(create_archive_vacancy_table_query.format(self.front_schema))
             self.conn.commit()
             logging.info(f'Archive vacancies table created successfully in {self.front_schema}')
         except Exception as e:
@@ -298,6 +298,61 @@ class DatabaseManager:
             self.cur.execute(create_link_tables_query.format(self.schema))
             logging.info(f'Link tables creating in schema {self.schema} completed successfully')
             self.cur.execute(create_link_tables_query.format(self.front_schema))
+            logging.info(f'Link tables creating in schema {self.front_schema} completed successfully')
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f'Error while link tables creating: {e}')
+            self.conn.rollback()
+            
+    def create_archive_link_tables(self):
+        create_archive_link_tables_query = f""" 
+        CREATE TABLE IF NOT EXISTS {0}.archive_job_formats_vacancies (
+        vacancy_id BIGINT,
+        job_format_id INT,
+        FOREIGN KEY (vacancy_id) REFERENCES {0}.archive_vacancies (id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        FOREIGN KEY (job_format_id) REFERENCES {0}.raw_job_formats (id) ON UPDATE CASCADE ON DELETE RESTRICT
+        );
+
+        CREATE TABLE IF NOT EXISTS {0}.archive_languages_vacancies (
+        vacancy_id BIGINT,
+        language_id INT,
+        FOREIGN KEY (vacancy_id) REFERENCES {0}.archive_vacancies (id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        FOREIGN KEY (language_id) REFERENCES {0}.raw_languages (id) ON UPDATE CASCADE ON DELETE RESTRICT	
+        );
+
+        CREATE TABLE IF NOT EXISTS {0}.archive_skills_vacancies (
+        vacancy_id BIGINT,
+        skill_id INT,
+        FOREIGN KEY (vacancy_id) REFERENCES {0}.archive_vacancies (id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        FOREIGN KEY (skill_id) REFERENCES {0}.raw_skills (id) ON UPDATE CASCADE ON DELETE RESTRICT
+        );
+
+        CREATE TABLE IF NOT EXISTS {0}.archive_job_types_vacancies (
+        vacancy_id BIGINT,
+        job_type_id INT,
+        FOREIGN KEY (vacancy_id) REFERENCES {0}.archive_vacancies (id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        FOREIGN KEY (job_type_id) REFERENCES {0}.raw_job_types (id) ON UPDATE CASCADE ON DELETE RESTRICT
+        );
+
+        CREATE TABLE IF NOT EXISTS {0}.archive_specialities_vacancies (
+        vacancy_id BIGINT,
+        spec_id INT,
+        concurrence_percent DECIMAL(4,1),
+        FOREIGN KEY (vacancy_id) REFERENCES {0}.archive_vacancies (id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        FOREIGN KEY (spec_id) REFERENCES {0}.raw_specialities (id) ON UPDATE CASCADE ON DELETE RESTRICT
+        );
+
+        CREATE TABLE IF NOT EXISTS {0}.archive_towns_vacancies (
+        vacancy_id BIGINT,
+        town_id INT,
+        FOREIGN KEY (vacancy_id) REFERENCES {0}.archive_vacancies (id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        FOREIGN KEY (town_id) REFERENCES {0}.raw_towns (id) ON UPDATE CASCADE ON DELETE RESTRICT
+        );
+        """
+        try:
+            self.cur.execute(create_archive_link_tables_query.format(self.schema))
+            logging.info(f'Link tables creating in schema {self.schema} completed successfully')
+            self.cur.execute(create_archive_link_tables_query.format(self.front_schema))
             logging.info(f'Link tables creating in schema {self.front_schema} completed successfully')
             self.conn.commit()
         except Exception as e:
