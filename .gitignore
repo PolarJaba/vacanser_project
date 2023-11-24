@@ -2,3 +2,8 @@ config_connections.json
 .env
 .gfenv
 prov.py
+venv/
+.idea/
+__pycache__/
+airflow/logs
+airflow/plugins
