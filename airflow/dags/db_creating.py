@@ -96,6 +96,7 @@ towns_vacancies = pd.read_csv(r'/opt/airflow/from_DS/towns_vacancies.csv')
 
 ds_search = pd.read_csv(r'/opt/airflow/from_DS/ds_search.csv')
 
+
 class DatabaseManager:
     def __init__(self, conn):
         self.conn = conn
@@ -291,7 +292,6 @@ class DatabaseManager:
         except Exception as e:
             self.log.error(f'Ошибка при выполнении запроса "create_deleted_not_actual_table_query": {e}')
             self.conn.rollback()
-
 
     def create_not_actual_link_tables(self):
         try:
