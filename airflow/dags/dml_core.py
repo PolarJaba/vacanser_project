@@ -14,11 +14,12 @@ class DataManager:
         self.engine = engine
         self.data_to_closed = data_to_closed
         self.data = dict_all_data
-        self.dictionary_tables_lst = ['raw_job_formats', 'raw_job_types', 'raw_languages',
-                                      'raw_companies', 'raw_sources', 'raw_specialities',
-                                      'raw_skills', 'raw_towns']
+        self.dictionary_tables_lst = ['job_formats', 'job_types', 'languages',
+                                      'companies', 'sources', 'specialities',
+                                      'skills', 'towns', 'experience']
         self.link_tables_lst = ['job_formats_vacancies', 'job_types_vacancies', 'languages_vacancies',
-                                'specialities_vacancies', 'skills_vacancies', 'towns_vacancies']
+                                'specialities_vacancies', 'skills_vacancies', 'towns_vacancies',
+                                'specialities_skills', 'experience_vacancies']
         """
         Необходимо добавить все наборы данных от DS
         """
@@ -65,12 +66,12 @@ class DataManager:
             data_to_load = [tuple(x) for x in df.to_records(index=False)]
             cols = ', '.join(list(df))
             update_query = f"""
-            INSERT INTO {0}.{df_name} 
+            INSERT INTO {self.schema}.{df_name} 
             VALUES ({', '.join(['%s'] * len(list(df)))})
             ON CONFLICT (id) DO UPDATE
             SET ({cols}) = ({','.join(['EXCLUDED.' + x for x in list(df)])})
             """
-            self.cur.executemany(update_query.format(self.schema), data_to_load)
+            self.cur.executemany(update_query, data_to_load)
             logging.info(f'Data loaded into {self.schema}.{df_name} successfully')
         else:
             logging.info(f'No data to loading, dataframe {df_name} is empty')
@@ -85,17 +86,17 @@ class DataManager:
             selected_columns = df[['id', 'title']].copy()
             data_to_load = [tuple(x) for x in selected_columns.to_records(index=False)]
 
-            # selected_columns.to_sql(str(df_name).replace('raw_', ''), self.engine,
+            # selected_columns.to_sql(str(df_name).replace('', ''), self.engine,
             #                         schema=self.schema, if_exists='append', index=False)
 
             cols = ', '.join(list(selected_columns))
             update_query = f"""
-            INSERT INTO {0}.{df_name} 
+            INSERT INTO {self.front_schema}.{df_name} 
             VALUES ({', '.join(['%s'] * len(list(selected_columns)))})
             ON CONFLICT (id) DO UPDATE
             SET ({cols}) = ({','.join(['EXCLUDED.' + x for x in list(selected_columns)])})
             """
-            self.cur.executemany(update_query.format(self.front_schema), data_to_load)
+            self.cur.executemany(update_query, data_to_load)
         else:
             logging.info(f'No data to loading, dataframe {df_name} is empty')
 
@@ -115,7 +116,7 @@ class DataManager:
                 logging.error(f"Error while data loading to dictionary {dict_table_name}: {e}")
                 self.conn.rollback()
 
-    # Init vacancies loading (union, no commit)
+    # Init vacancies loading (union, commit)
     def load_data_to_vacancies(self):
         logging.info('Loading data to vacancies')
         if not self.data.get('vacancies').empty:
@@ -148,21 +149,25 @@ class DataManager:
                 self.fix_type()
                 logging.info("Deleting old links")
                 # Delete updating vacancies
-                delete_updating_data_query = f"""
-                DELETE FROM {0}.{link_table_name} WHERE vacancy_id IN %s
+                delete_updating_data_query = """
+                DELETE FROM {0}.{1} WHERE vacancy_id IN %s
                 """
-                self.cur.execute(delete_updating_data_query.format(self.schema), (tuple(df['vacancy_id'].tolist()),))
-                self.cur.execute(delete_updating_data_query.format(self.front_schema),
+                self.cur.execute(delete_updating_data_query.format(self.schema, link_table_name),
+                                 (tuple(df['vacancy_id'].tolist()),))
+                self.cur.execute(delete_updating_data_query.format(self.front_schema, link_table_name),
                                  (tuple(df['vacancy_id'].tolist()),))
                 # Loading data to core
                 logging.info("Loading data")
                 data_to_load = [tuple(x) for x in df.to_records(index=False)]
-                load_data_query = f"""
-                INSERT INTO {0}.{link_table_name}
-                VALUES ({', '.join(['%s'] * len(list(df)))})
+                load_data_query = """
+                INSERT INTO {0}.{1}
+                VALUES ({2})
                 """
-                self.cur.executemany(load_data_query.format(self.schema), data_to_load)
-                self.cur.execute(load_data_query.format(self.front_schema), data_to_load)
+                self.cur.executemany(load_data_query.format(self.schema, link_table_name,
+                                                            ', '.join(['%s'] * len(list(df)))), data_to_load)
+                logging.info(f"link {link_table_name} loaded successfully into schema {self.schema}")
+                self.cur.executemany(load_data_query.format(self.front_schema, link_table_name,
+                                                            ', '.join(['%s'] * len(list(df)))), data_to_load)
                 logging.info('Completed')
             else:
                 logging.info(f'No data to update {link_table_name}')
@@ -194,26 +199,26 @@ class DataManager:
         SELECT id, url  FROM {self.schema}.vacancies
         """
         core_data = pd.read_sql(core_data_load_query, self.engine)
-        # Для оптимизации работы переопределять raw_tables
-        # for table in raw_tables:
-        # raw_actual = f"""
+        # Для оптимизации работы переопределять tables
+        # for table in tables:
+        # actual = f"""
         # SELECT vacancy_id AS url, MAX(version_vac) AS version 
         # FROM {self.schema}.{table}
         # WHERE status != 'closed' 
         # GROUP BY vacancy_id
         # """
-        # raw_actual_data = raw_actual_data.append(pd.read_sql(raw_actual, self.engine), ignore_index=True)
+        # actual_data = actual_data.append(pd.read_sql(actual, self.engine), ignore_index=True)
 
         # Получение списка неактуальных вакансий на core 
-        # archive_df = core_data[~core_data['url'].isin(raw_actual_data['url'])]            
-        # archive_urls = set(core_data['url']).difference(set(raw_data['url']))
+        # archive_df = core_data[~core_data['url'].isin(actual_data['url'])]            
+        # archive_urls = set(core_data['url']).difference(set(data['url']))
 
         """
         Предполагается получение датафрейма неактуальных вакансий
         при запросе аналогичных данных для обновления raw
         ЗАМЕНИТЬ НА РЕАЛЬНЫЙ df
         """
-        self.data_to_closed = pd.DataFrame({'url': ['https://rabota.sber.ru/search/4219605',
+        self.data_to_closed = pd.DataFrame({'vacancy_url': ['https://rabota.sber.ru/search/4219605',
                                             'https://rabota.sber.ru/search/4221748']})
 
         old_data = self.data_to_closed.merge(core_data, how='inner', left_on='url', right_on='vacancy_url')
@@ -222,7 +227,7 @@ class DataManager:
         if not old_data.empty:
 
             # Load vacancies' columns list 
-            select_vacancy_columns = f"""
+            select_vacancy_columns = """
             SELECT column_name
             FROM information_schema.columns
             WHERE table_schema = '{0}' AND table_name = 'archive_vacancies'
@@ -233,12 +238,12 @@ class DataManager:
 
             # Upsert archive vacancies table
             cols = ','.join(na_vacancies_cols)
-            load_archive_data_to_na_vacancy = f"""
+            load_archive_data_to_na_vacancy = """
             INSERT INTO {0}.archive_vacancies
             SELECT * FROM {0}.vacancies
             WHERE url IN %s
             ON CONFLICT (id) DO UPDATE
-            SET ({cols}) = ({','.join(['EXCLUDED.' + x for x in na_vacancies_cols])})
+            SET ({1}) = ({2})
             """
 
             urls_tuple = tuple(old_data['url'].tolist())
@@ -246,39 +251,42 @@ class DataManager:
             # Load data to archive vacancies table
             try:
                 # Upsert archive vacancies table
-                self.cur.execute(load_archive_data_to_na_vacancy, (urls_tuple,))
+                self.cur.execute(load_archive_data_to_na_vacancy.format(self.schema, cols, ','.join(
+                    ['EXCLUDED.' + x for x in na_vacancies_cols])), (urls_tuple,))
+                self.cur.execute(load_archive_data_to_na_vacancy.format(self.front_schema, cols, ','.join(
+                    ['EXCLUDED.' + x for x in na_vacancies_cols])), (urls_tuple,))
 
                 # Update links tables
                 for table_name in self.link_tables_lst:
                     # Delete old links
-                    delete_updating_data_query = f"""
-                    DELETE FROM {0}.archive_{table_name} WHERE vacancy_id IN %s
+                    delete_updating_data_query = """
+                    DELETE FROM {0}.archive_{1} WHERE vacancy_id IN %s
                     """
-                    self.cur.execute(delete_updating_data_query.format(self.schema), (ids_tuple,))
-                    self.cur.execute(delete_updating_data_query.format(self.front_schema), (ids_tuple,))
+                    self.cur.execute(delete_updating_data_query.format(self.schema, table_name), (ids_tuple,))
+                    self.cur.execute(delete_updating_data_query.format(self.front_schema, table_name), (ids_tuple,))
 
                     # Remove old links
-                    move_data_query = f"""
-                    INSERT INTO {0}.archive_{table_name} 
-                    SELECT * FROM {0}.{table_name}
+                    move_data_query = """
+                    INSERT INTO {0}.archive_{1} 
+                    SELECT * FROM {0}.{1}
                     WHERE vacancy_id IN %s
                     """
 
                     # Delete old links from core
-                    delete_data_query = f"""
-                    DELETE FROM {0}.{table_name} WHERE vacancy_id IN %s
+                    delete_data_query = """
+                    DELETE FROM {0}.{1} WHERE vacancy_id IN %s
                     """
-                    self.cur.execute(move_data_query.format(self.schema), (ids_tuple,))
-                    self.cur.execute(delete_data_query.format(self.schema), (ids_tuple,))
+                    self.cur.execute(move_data_query.format(self.schema, table_name), (ids_tuple,))
+                    self.cur.execute(delete_data_query.format(self.schema, table_name), (ids_tuple,))
 
-                    self.cur.execute(move_data_query.format(self.front_schema), (ids_tuple,))
-                    self.cur.execute(delete_data_query.format(self.front_schema), (ids_tuple,))
+                    self.cur.execute(move_data_query.format(self.front_schema, table_name), (ids_tuple,))
+                    self.cur.execute(delete_data_query.format(self.front_schema, table_name), (ids_tuple,))
 
                 # Delete not actual vacancies from core    
-                delete_archive_data_ds = f"""
+                delete_archive_data_ds = """
                 DELETE FROM {0}.ds_search WHERE vacancy_id IN %s;
                 """
-                delete_archive_data_vacancies = f"""
+                delete_archive_data_vacancies = """
                 DELETE FROM {0}.vacancies WHERE url IN %s;
                 """
                 self.cur.execute(delete_archive_data_ds.format(self.schema), (ids_tuple,))
@@ -312,14 +320,17 @@ class DataManager:
                 data_to_load = [tuple(x) for x in vacancies.to_records(index=False)]
                 names = list(vacancies)
                 cols = ', '.join(names)
-                vacancies_update_query = f"""
-                INSERT INTO {0}.vacancies 
-                VALUES ({', '.join(['%s'] * len(list(vacancies)))})
+                update_query = """
+                INSERT INTO {0}.{1} 
+                VALUES ({2})
                 ON CONFLICT (id) DO UPDATE
-                SET ({cols}) = ({','.join(['EXCLUDED.' + x for x in names])});
+                SET ({3}) = ({4});
                 """
-                self.cur.executemany(vacancies_update_query.format(self.schema), data_to_load)
-                self.cur.executemany(vacancies_update_query.format(self.front_schema), data_to_load)
+                self.cur.executemany(update_query.format(self.schema, 'vacancies', ', '.join(['%s'] * len(names)), cols,
+                                                         ','.join(['EXCLUDED.' + x for x in names])), data_to_load)
+                self.cur.executemany(update_query.format(self.front_schema, 'vacancies', ','.join(['%s'] * len(names)),
+                                                         cols, ','.join(['EXCLUDED.' + x for x in names])),
+                                     data_to_load)
 
                 logging.info("New data loading to search tables")
 
@@ -327,14 +338,11 @@ class DataManager:
                 data_to_load = [tuple(x) for x in self.data.get('ds_search').to_records(index=False)]
                 names = list(self.data.get('ds_search'))
                 cols = ', '.join(names)
-                ds_search_update = f"""
-                INSERT INTO {0}.ds_search
-                VALUES ({', '.join(['%s'] * len(names))})
-                ON CONFLICT (vacancy_id) DO UPDATE
-                SET ({cols}) = ({','.join(['EXCLUDED.' + x for x in names])});
-                """
-                self.cur.executemany(ds_search_update.format(self.schema), data_to_load)
-                self.cur.executemany(ds_search_update.format(self.front_schema), data_to_load)
+                self.cur.executemany(update_query.format(self.schema, 'ds_search', ', '.join(['%s'] * len(names)), cols,
+                                                         ','.join(['EXCLUDED.' + x for x in names])), data_to_load)
+                self.cur.executemany(update_query.format(self.front_schema, 'ds_search', ','.join(['%s'] * len(names)),
+                                                         cols, ','.join(['EXCLUDED.' + x for x in names])),
+                                     data_to_load)
                 logging.info("Data loaded")
 
                 # Load data to links
